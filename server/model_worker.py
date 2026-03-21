@@ -9,6 +9,7 @@ and runs the HTTP server.
 import logging
 import os
 import queue
+import random
 import sys
 import threading
 import time
@@ -272,6 +273,16 @@ class ModelWorker:
             with self.lock:
                 task["status"] = "processing"
             params = task["params"]
+
+            # Resolve random seed on rank 0 so all ranks share the same noise.
+            # Without this, seed=-1 causes each rank to independently pick a
+            # different random seed inside model.generate(), leading to
+            # inconsistent noise tensors and blurry / half-denoised output.
+            seed = params.get("seed", -1)
+            if seed < 0:
+                seed = random.randint(0, sys.maxsize)
+            params["seed"] = seed
+
             broadcast_data = [params]
             logger.info(
                 f"Processing task {task_id}: "
